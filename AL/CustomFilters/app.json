@@ -1,0 +1,44 @@
+{
+  "id": "de7a7d8d-efa5-4969-b4d5-964946eda4d2",
+  "name": "CustomFilters",
+  "publisher": "Continia Spain",
+  "version": "1.0.0.0",
+  "brief": "",
+  "description": "",
+  "privacyStatement": "",
+  "EULA": "",
+  "help": "",
+  "url": "",
+  "logo": "",
+  "dependencies": [
+    {
+      "id": "6da8dd2f-e698-461f-9147-8e404244dd85",
+      "publisher": "Continia Software",
+      "name": "Continia Document Capture 365",
+      "version": "9.1.0.5"
+
+    },
+    {
+      "id": "4b915d7e-c02a-435f-85ab-649086c1e002",
+      "publisher": "Continia Software",
+      "name": "Continia Core",
+      "version": "6.1.0.0"
+
+    }
+  ],
+  "screenshots": [],
+  "platform": "1.0.0.0",
+  "application": "20.0.0.0",
+  "idRanges": [
+    {
+      "from": 60100,
+      "to": 60149
+    }
+  ],
+  "resourceExposurePolicy": {
+    "allowDebugging": true,
+    "allowDownloadingSource": false,
+    "includeSourceInSymbolFile": false
+  },
+  "runtime": "9.0"
+}

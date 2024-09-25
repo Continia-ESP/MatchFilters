@@ -1,0 +1,1232 @@
+OBJECT Table 60100 CDC Match Filters
+{
+  OBJECT-PROPERTIES
+  {
+    Date=22/07/21;
+    Time=12:02:47;
+    Modified=Yes;
+    Version List=;
+  }
+  PROPERTIES
+  {
+  }
+  FIELDS
+  {
+    { 1   ;   ;Template No.        ;Code20        ;TableRelation="CDC Template".No.;
+                                                   DataClassification=ToBeClassified }
+    { 5   ;   ;Table No.           ;Integer       ;DataClassification=ToBeClassified }
+    { 10  ;   ;Field No.           ;Integer       ;TableRelation=Field.No. WHERE (TableNo=FIELD(Table No.));
+                                                   DataClassification=ToBeClassified }
+    { 15  ;   ;Filter Field        ;Code20        ;TableRelation="CDC Template Field".Code WHERE (Template No.=FIELD(Template No.));
+                                                   DataClassification=ToBeClassified }
+  }
+  KEYS
+  {
+    {    ;Template No.,Table No.,Field No.        ;Clustered=Yes }
+  }
+  FIELDGROUPS
+  {
+  }
+  CODE
+  {
+
+    BEGIN
+    END.
+  }
+}
+
+OBJECT Page 6085702 CDC Purch. Invoice Match
+{
+  OBJECT-PROPERTIES
+  {
+    Date=22/07/21;
+    Time=12:11:28;
+    Modified=Yes;
+    Version List=DCW18.00.00.7.02;
+  }
+  PROPERTIES
+  {
+    Permissions=TableData 6085700=rimd;
+    CaptionML=[ENU=Invoice Matching;
+               ESP=Casar factura compra];
+    InsertAllowed=No;
+    DeleteAllowed=No;
+    LinksAllowed=No;
+    SourceTable=Table6085590;
+    DataCaptionExpr="No." + ' - ' + GetSourceName;
+    PageType=Card;
+    PromotedActionCategoriesML=[ENU=0,Process,2,Template,Vendor;
+                                ESP=0,Proceso,2,Plantilla,Proveedor];
+    OnOpenPage=VAR
+                 PurchRcptLine@6085575 : Record 121;
+                 PurchLine@6085574 : Record 39;
+                 CurrencyCode@6085573 : Code[10];
+                 BuyFromVendorNo@1002 : Code[20];
+                 PayToVendorNo@1001 : Code[20];
+                 Vendor@1000 : Record 23;
+               BEGIN
+                 FILTERGROUP := 2;
+                 SETRECFILTER;
+                 FILTERGROUP := 0;
+
+                 CurrPage.DocumentLines.PAGE.SetShowMatchedQty(TRUE);
+                 CurrPage.OrderLines.PAGE.SetShowOrder(TRUE);
+
+                 Channel := CREATEGUID;
+                 CLEAR(EventNotifierSource);
+
+                 IF WebClientMgt.IsWebClient THEN
+                   ShowWebInfoPart := TRUE
+                 ELSE
+                   EventNotifierSource := FORMAT(Channel);
+
+                 GLSetup.GET;
+                 DCSetup.GET;
+
+                 ShowDocLines := HasDocumentLines;
+                 OurDocNo := COPYSTR(PurchDocMgnt.GetOurDocumentNo(Rec),1,MAXSTRLEN(OurDocNo));
+
+                 UpdateInfoBar;
+
+                 IF (PurchDocMgnt.GetCurrencyCode(Rec) = GLSetup."LCY Code") AND (NOT DCSetup."Fill-out LCY") THEN
+                   CurrencyCode := ''
+                 ELSE
+                   CurrencyCode := PurchDocMgnt.GetCurrencyCode(Rec);
+
+                 BuyFromVendorNo := GetSourceID;
+                 Vendor.GET(BuyFromVendorNo);
+                 IF Vendor."Pay-to Vendor No." <> '' THEN
+                   PayToVendorNo := Vendor."Pay-to Vendor No."
+                 ELSE
+                   PayToVendorNo := BuyFromVendorNo;
+
+                 PurchRcptLine.SETCURRENTKEY("Pay-to Vendor No.");
+                 PurchRcptLine.FILTERGROUP(4);
+
+                 IF BuyFromVendorNo = PayToVendorNo THEN
+                   PurchRcptLine.SETRANGE("Pay-to Vendor No.",PayToVendorNo)
+                 ELSE BEGIN
+                   PurchRcptLine.SETFILTER("Pay-to Vendor No.",'%1|%2',BuyFromVendorNo,PayToVendorNo);
+                   PurchRcptLine.SETRANGE("Buy-from Vendor No.",BuyFromVendorNo);
+                 END;
+
+                 PurchRcptLine.SETFILTER("Qty. Rcd. Not Invoiced",'<>%1',0);
+                 PurchRcptLine.SETRANGE("Currency Code",CurrencyCode);
+                 PurchRcptLine.FILTERGROUP(0);
+
+                 CurrPage.ReceiptLines.PAGE.SETTABLEVIEW(PurchRcptLine);
+                 CurrPage.ReceiptLines.PAGE.SetDocument(Rec);
+                 CurrPage.ReceiptLines.PAGE.SetChannel(Channel);
+                 CurrPage.ReceiptLines.PAGE.UpdatePage;
+
+                 PurchLine.SETCURRENTKEY("Document Type","Pay-to Vendor No.","Currency Code");
+                 PurchLine.FILTERGROUP(4);
+                 PurchLine.SETRANGE("Document Type",PurchLine."Document Type"::Order);
+
+                 IF BuyFromVendorNo = PayToVendorNo THEN
+                   PurchLine.SETRANGE("Pay-to Vendor No.",PayToVendorNo)
+                 ELSE BEGIN
+                   PurchLine.SETFILTER("Pay-to Vendor No.",'%1|%2',BuyFromVendorNo,PayToVendorNo);
+                   PurchLine.SETRANGE("Buy-from Vendor No.",BuyFromVendorNo);
+                 END;
+
+                 PurchLine.SETRANGE("Currency Code",CurrencyCode);
+                 PurchLine.SETFILTER("Outstanding Quantity",'<>%1',0);
+                 PurchLine.FILTERGROUP(0);
+
+                 CurrPage.OrderLines.PAGE.SETTABLEVIEW(PurchLine);
+                 CurrPage.OrderLines.PAGE.SetDocument(Rec);
+                 CurrPage.OrderLines.PAGE.SetChannel(Channel);
+                 CurrPage.OrderLines.PAGE.UpdatePage;
+
+                 CurrPage.DocumentLines.PAGE.SetDocument(Rec);
+                 CurrPage.DocumentLines.PAGE.UpdatePage;
+               END;
+
+    OnClosePage=BEGIN
+                  IF WebClientMgt.IsWebClient THEN
+                    ValidateDocument;
+                END;
+
+    OnAfterGetRecord=BEGIN
+                       UpdateInfoBar;
+                     END;
+
+    ActionList=ACTIONS
+    {
+      { 1000000018;  ;ActionContainer;
+                      Name=RelatedInformation;
+                      ActionContainerType=RelatedInformation }
+      { 1000000015;1 ;ActionGroup;
+                      Name=Template;
+                      CaptionML=[ENU=&Template;
+                                 ESP=&Plantilla] }
+      { 1000000014;2 ;Action    ;
+                      Name=Template Card;
+                      ShortCutKey=Ctrl+S;
+                      CaptionML=[ENU=&Template Card;
+                                 ESP=&Ficha plantilla];
+                      ToolTipML=[ENU=View or edit the template applied to the document.;
+                                 ESP=Permite ver o editar la plantilla aplicada al documento.];
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Edit;
+                      PromotedCategory=Category4;
+                      OnAction=VAR
+                                 TemplateCard@6085601 : Page 6085584;
+                                 Template@6085600 : Record 6085579;
+                               BEGIN
+                                 TemplateCard.SetDocumentNo("No.");
+
+                                 Template.SETRANGE("No.","Template No.");
+                                 TemplateCard.SETTABLEVIEW(Template);
+
+                                 TemplateCard.RUN;
+                               END;
+                                }
+      { 1160040004;1 ;ActionGroup;
+                      Name=Vendor;
+                      CaptionML=[ENU=Vendor;
+                                 ESP=Proveedor] }
+      { 1160040003;2 ;Action    ;
+                      Name=Vendor Card;
+                      CaptionML=[ENU=Vendor Card;
+                                 ESP=Ficha proveedor];
+                      ToolTipML=[ENU=View or edit the vendor assigned to the document;
+                                 ESP=Permite ver o editar el proveedor asignado al documento];
+                      Promoted=Yes;
+                      Image=Vendor;
+                      PromotedCategory=Category5;
+                      OnAction=VAR
+                                 Vendor@1160040000 : Record 23;
+                               BEGIN
+                                 Vendor.GET(GetSourceID);
+                                 PAGE.RUN(PAGE::"Vendor Card",Vendor);
+                               END;
+                                }
+      { 1160040002;2 ;Action    ;
+                      Name=Unposted Documents;
+                      CaptionML=[ENU=&Unposted Documents;
+                                 ESP=Documentos &no registrados];
+                      ToolTipML=[ENU=View a list of all unposted documents for the vendor assigned to the document.;
+                                 ESP=Permite ver la lista de todos los documentos no registrados del proveedor asignado al documento.];
+                      Promoted=Yes;
+                      Image=Invoice;
+                      PromotedCategory=Category5;
+                      OnAction=VAR
+                                 PurchHeader@1160040000 : Record 38;
+                               BEGIN
+                                 PurchHeader.SETRANGE("Pay-to Vendor No.",GetSourceID);
+                                 PAGE.RUN(PAGE::"CDC Purchase Documents",PurchHeader);
+                               END;
+                                }
+      { 1160040001;2 ;Action    ;
+                      Name=Ledger Entries;
+                      CaptionML=[ENU=Ledger E&ntries;
+                                 ESP=Mo&vimientos];
+                      ToolTipML=[ENU=View the vendor ledger entries for the vendor assigned to the document.;
+                                 ESP=Permite ver los movimientos de proveedor para el proveedor asignado al documento.];
+                      Promoted=Yes;
+                      Image=VendorLedger;
+                      PromotedCategory=Category5;
+                      OnAction=VAR
+                                 VendLedgEntry@1160040000 : Record 25;
+                               BEGIN
+                                 VendLedgEntry.SETCURRENTKEY("Vendor No.");
+                                 VendLedgEntry.SETRANGE("Vendor No.",GetSourceID);
+                                 PAGE.RUN(PAGE::"Vendor Ledger Entries",VendLedgEntry);
+                               END;
+                                }
+      { 1000000012;  ;ActionContainer;
+                      Name=ActionItems;
+                      ActionContainerType=ActionItems }
+      { 1000000011;1 ;ActionGroup;
+                      Name=Functions;
+                      CaptionML=[ENU=F&unctions;
+                                 ESP=Acci&ones] }
+      { 1100288000;2 ;Action    ;
+                      Name=Custom Filters;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 CurrPage.ReceiptLines.PAGE.SetFilters(Rec);
+                               END;
+                                }
+      { 1160040005;2 ;Action    ;
+                      Name=Filter on Order No.;
+                      ShortCutKey=Shift+Ctrl+O;
+                      CaptionML=[ENU=Filter on Order No.;
+                                 ESP=Filtrar por N§ pedido];
+                      ToolTipML=[ENU=Filter all receipt and order lines to show only the lines with the order number recognized in the document.;
+                                 ESP=Permite filtrar todas las l¡neas de albar n y pedido para mostrar solo las l¡neas con el n£mero de pedido reconocido en el documento.];
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=FilterLines;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 FilterOnOrderNo := NOT FilterOnOrderNo;
+                                 IF FilterOnOrderNo THEN BEGIN
+                                   CurrPage.ReceiptLines.PAGE.SetOrderNo(OurDocNo);
+                                   CurrPage.OrderLines.PAGE.SetDocumentNo(OurDocNo);
+                                 END ELSE BEGIN
+                                   CurrPage.ReceiptLines.PAGE.SetOrderNo('');
+                                   CurrPage.OrderLines.PAGE.SetDocumentNo('');
+                                 END;
+
+                                 CurrPage.UPDATE(FALSE);
+                               END;
+                                }
+      { 8       ;2   ;Action    ;
+                      Name=Filter on Unmatched Only;
+                      CaptionML=[ENU=Filter on Unmatched Only;
+                                 ESP=Filtrar solo no casados];
+                      ToolTipML=[ENU=Filter all receipt and order lines to show only the lines that are unmatched.;
+                                 ESP=Filtre todas las l¡neas de albar n y pedido para mostrar solo las l¡neas no casadas.];
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=FilterLines;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 CurrPage.ReceiptLines.PAGE.SetCalculatedFilter(NOT IsCalculatedFilterSet,'UNMATCHED');
+                                 CurrPage.OrderLines.PAGE.SetCalculatedFilter(NOT IsCalculatedFilterSet,'UNMATCHED');
+                                 IsCalculatedFilterSet := NOT IsCalculatedFilterSet;
+                               END;
+                                }
+      { 9       ;2   ;Action    ;
+                      Name=Filter on Match Differences;
+                      CaptionML=[ENU=Filter on Match Differences;
+                                 ESP=Filtrar por diferencias casada];
+                      ToolTipML=[ENU=Filter all receipt and order lines to show only the lines that have a difference between matched amount (invoice) and amount on the order.;
+                                 ESP=Filtre todas las l¡neas de albar n y pedido para mostrar solo las l¡neas que tienen una diferencia entre el importe casado (factura) y el importe en el pedido.];
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=FilterLines;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 CurrPage.ReceiptLines.PAGE.SetCalculatedFilter(NOT IsCalculatedFilterSet,'AMOUNTDIFF');
+                                 CurrPage.OrderLines.PAGE.SetCalculatedFilter(NOT IsCalculatedFilterSet,'AMOUNTDIFF');
+                                 IsCalculatedFilterSet := NOT IsCalculatedFilterSet;
+                               END;
+                                }
+      { 1000000008;2 ;Action    ;
+                      Name=Perform Match;
+                      ShortCutKey=Ctrl+M;
+                      CaptionML=[ENU=Perform Match;
+                                 ESP=Realizar casamiento];
+                      ToolTipML=[ENU=Perform auto-matching according to the setup of the template assigned to the document.;
+                                 ESP=Permite casar autom ticamente de acuerdo con la configuraci¢n de la plantilla asignada al documento.];
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Splitlines;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 TestStatus;
+                                 PurchDocMgnt.AutoMatch(Rec);
+                                 CurrPage.DocumentLines.PAGE.UpdatePage;
+                                 CurrPage.UPDATE(FALSE);
+                               END;
+                                }
+      { 1000000006;2 ;Action    ;
+                      Name=Remove All Matches;
+                      CaptionML=[ENU=Remove &All Matches;
+                                 ESP=Eliminar todos los casamientos];
+                      ToolTipML=[ENU=Remove all matches to the document.;
+                                 ESP=Eliminar todos los casamientos del documento.];
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Cancel;
+                      PromotedCategory=Process;
+                      OnAction=VAR
+                                 PurchDocMatch@6085574 : Record 6085700;
+                                 Comment@6085573 : Record 6085594;
+                               BEGIN
+                                 IF NOT CONFIRM(ResetMatchQst) THEN
+                                   EXIT;
+
+                                 DeleteComments(Comment.Area::Match);
+                                 PurchDocMatch.SETRANGE("Document No.","No.");
+                                 PurchDocMatch.DELETEALL(TRUE);
+
+                                 "Match Status" := "Match Status"::Unmatched;
+                                 MODIFY(TRUE);
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1000000000;;Container;
+                Name=ContentArea;
+                ContainerType=ContentArea }
+
+    { 6   ;1   ;Group     ;
+                Name=WebInfobar;
+                CaptionML=[ENU=Match Overview;
+                           ESP=Resumen combinaci¢n];
+                Visible=ShowWebInfoPart;
+                GroupType=Group }
+
+    { 1   ;2   ;Group     ;
+                Name=Control1;
+                GroupType=GridLayout;
+                Layout=Columns }
+
+    { 5   ;3   ;Field     ;
+                Name=OurDocNo;
+                SourceExpr=OurDocNo;
+                CaptionClass=PurchDocMgnt.GetOurDocNoDesc(Rec);
+                Editable=FALSE }
+
+    { 2   ;3   ;Field     ;
+                Name=AmountToMatch;
+                SourceExpr=AmountToMatch;
+                CaptionClass=Text003;
+                Editable=FALSE }
+
+    { 3   ;3   ;Field     ;
+                Name=MatchedAmount;
+                SourceExpr=MatchedAmount;
+                CaptionClass=Text004;
+                Editable=FALSE }
+
+    { 4   ;3   ;Field     ;
+                Name=MatchDiffAmount;
+                SourceExpr=MatchDiffAmount;
+                CaptionClass=Text005;
+                Editable=FALSE }
+
+    { 161024012;1;Field   ;
+                Name=InfoBarAddIn;
+                SourceExpr=InfoBarAddInSource;
+                ControlAddIn=[Akeyto.DocumentCapture.Dynamics.Nav.MatchInfoBar;PublicKeyToken=0c53e51c0afe7001];
+                ShowCaption=No }
+
+    { 161024013;1;Field   ;
+                Name=EventNotifier;
+                SourceExpr=EventNotifierSource;
+                ControlAddIn=[Akeyto.DocumentCapture.Dynamics.Nav.EventNotifier;PublicKeyToken=0c53e51c0afe7001];
+                OnControlAddIn=BEGIN
+                                 UpdateInfoBar;
+                               END;
+                                }
+
+    { 1000000003;1;Part   ;
+                Name=ReceiptLines;
+                CaptionML=[ENU=Purchase Receipt Lines;
+                           ESP=L¡neas albar n compra];
+                PagePartID=Page6085703;
+                UpdatePropagation=Both }
+
+    { 1160040000;1;Part   ;
+                Name=OrderLines;
+                CaptionML=[ENU=Order Lines;
+                           ESP=L¡neas pedido];
+                PagePartID=Page6085749;
+                PartType=Page;
+                UpdatePropagation=Both }
+
+    { 1000000007;1;Part   ;
+                Name=DocumentLines;
+                CaptionML=[ENU=Document Lines;
+                           ESP=L¡neas documento];
+                PagePartID=Page6085727;
+                Visible=ShowDocLines;
+                Editable=FALSE;
+                UpdatePropagation=Both }
+
+    { 1000000026;;Container;
+                Name=FactBoxArea;
+                ContainerType=FactBoxArea }
+
+    { 1000000025;1;Part   ;
+                Name=CaptureUI;
+                CaptionML=[ENU=Document;
+                           ESP=Documento];
+                SubPageLink=No.=FIELD(No.);
+                PagePartID=Page6085593 }
+
+  }
+  CODE
+  {
+    VAR
+      GLSetup@1160040000 : Record 98;
+      DCSetup@1160040001 : Record 6085573;
+      WebClientMgt@1003 : Codeunit 6085662;
+      PurchDocMgnt@1000000009 : Codeunit 6085709;
+      CaptureAddinLib@161024014 : Codeunit 6085660;
+      CaptureXmlDoc@161024013 : Codeunit 6192820;
+      InfoBarAddInSource@161024012 : Text;
+      EventNotifierSource@161024017 : Text;
+      Text003@161024015 : TextConst 'ENU=Amount to Match;ESP=Importe a casar';
+      Text004@161024016 : TextConst 'ENU=Matched Amount;ESP=Importe casado';
+      Channel@161024018 : GUID;
+      Text005@1160040002 : TextConst 'ENU=Difference;ESP=Diferencia';
+      OurDocNo@1160040004 : Code[250];
+      FilterOnOrderNo@1160040003 : Boolean;
+      ShowWebInfoPart@1004 : Boolean;
+      AmountToMatch@1002 : Decimal;
+      MatchedAmount@1001 : Decimal;
+      MatchDiffAmount@1000 : Decimal;
+      ShowDocLines@6085574 : Boolean INDATASET;
+      ResetMatchQst@6085573 : TextConst 'ENU=Do you want to reset matches for all document lines?;ESP=¨Desea reiniciar los casamientos de todas las l¡neas?';
+      IsCalculatedFilterSet@1005 : Boolean;
+
+    PROCEDURE SetDocument@1000000004(VAR NewDocument@1000000001 : Record 6085590);
+    VAR
+      Value@1000000003 : Record 6085593;
+      Field@1000000005 : Record 6085580;
+      CaptureMgnt@1000000006 : Codeunit 6085576;
+      i@1000000000 : Integer;
+      NoOfLines@1000000004 : Integer;
+      Arr@1000000002 : ARRAY [100] OF Text[30];
+    BEGIN
+      GET(NewDocument."No.");
+    END;
+
+    PROCEDURE UpdateInfoBar@161024012();
+    VAR
+      AppMgnt@161024012 : Codeunit 45;
+    BEGIN
+      AmountToMatch := PurchDocMgnt.GetAmountToMatch(Rec);
+      MatchedAmount := PurchDocMgnt.GetDocMatchedAmount(Rec);
+      MatchDiffAmount := AmountToMatch - MatchedAmount;
+
+      CaptureAddinLib.BuildMatchInfoBarCommand(CaptureXmlDoc,
+        PurchDocMgnt.GetOurDocNoDesc(Rec),OurDocNo,
+        Text003,FORMAT(AmountToMatch,0,AppMgnt.AutoFormatTranslate(1,PurchDocMgnt.GetCurrencyCode(Rec))),
+        Text004,FORMAT(MatchedAmount,0,AppMgnt.AutoFormatTranslate(1,PurchDocMgnt.GetCurrencyCode(Rec))),
+        Text005,FORMAT(MatchDiffAmount,0,AppMgnt.AutoFormatTranslate(1,PurchDocMgnt.GetCurrencyCode(Rec))));
+
+      CaptureAddinLib.XmlToText(CaptureXmlDoc,InfoBarAddInSource);
+      CLEAR(CaptureXmlDoc);
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
+OBJECT Page 6085703 CDC Purch. Invoice Match Subp.
+{
+  OBJECT-PROPERTIES
+  {
+    Date=22/07/21;
+    Time=12:40:30;
+    Modified=Yes;
+    Version List=DCW17.00.00.7.02;
+  }
+  PROPERTIES
+  {
+    Permissions=TableData 121=rm,
+                TableData 6085700=rimd;
+    CaptionML=[ENU=Purchase Receipt Lines;
+               ESP=L¡neas albar n compra];
+    InsertAllowed=No;
+    DeleteAllowed=No;
+    SourceTable=Table121;
+    PageType=ListPart;
+    OnOpenPage=BEGIN
+                 DefaultSorting := GETVIEW;
+               END;
+
+    OnAfterGetRecord=BEGIN
+                       DocNoHideValue := NOT IsFirstDocLine;
+                       IF PurchHeader."No." <> "Order No." THEN BEGIN
+                         IF NOT PurchHeader.GET(PurchHeader."Document Type"::Order,"Order No.") THEN
+                           CLEAR(PurchHeader);
+
+                         IF PurchHeader."Currency Code" <> '' THEN
+                           Currency.GET(PurchHeader."Currency Code");
+                         Currency.InitRoundingPrecision;
+                       END;
+
+                       IF NOT PurchLine.GET(PurchHeader."Document Type",PurchHeader."No.","Order Line No.") THEN
+                         CLEAR(PurchLine);
+
+                       PurchDocMgnt.CalcMatchedValues(Currency,Document."No.",PurchDocType::Receipt,"Document No.","Line No.",
+                         PurchLine."Direct Unit Cost",PurchLine."Line Discount %",MatchedQuantity,MatchedUnitCost,
+                         MatchedLineDiscPct,MatchedLineAmount,MatchedDifference);
+
+                       LineAmountOrder := PurchDocMgnt.GetReceiptLineAmount(Rec,MatchedQuantity,PurchHeader."Currency Code");
+
+                       IsStrong := MatchedQuantity <> 0;
+                       StyleCodeCosts := PurchDocMgnt.GetMatchStyle(MatchedQuantity,PurchLine."Direct Unit Cost",MatchedUnitCost);
+                       StyleCodeDiscPct := PurchDocMgnt.GetMatchStyle(MatchedQuantity,PurchLine."Line Discount %",MatchedLineDiscPct);
+                       StyleCodeDifference := PurchDocMgnt.GetMatchStyle(MatchedQuantity,0,MatchedDifference);
+                     END;
+
+    ActionList=ACTIONS
+    {
+      { 1160040006;  ;ActionContainer;
+                      Name=ActionItems;
+                      ActionContainerType=ActionItems }
+      { 1160040005;1 ;ActionGroup;
+                      Name=Line;
+                      CaptionML=[ENU=&Line;
+                                 ESP=&L¡nea];
+                      Image=Line }
+      { 1160040004;2 ;Action    ;
+                      Name=Card;
+                      ShortCutKey=Shift+Ctrl+E;
+                      CaptionML=[ENU=Card;
+                                 ESP=Ficha];
+                      ToolTipML=[ENU=View or change detailed information about the record on the document or journal line.;
+                                 ESP=Permite ver o cambiar la informaci¢n detallada sobre el registro en el documento o en la l¡nea del diario.];
+                      RunObject=Page 136;
+                      RunPageLink=No.=FIELD(Document No.);
+                      Image=Edit }
+      { 1160040003;2 ;Action    ;
+                      Name=Toggle Match;
+                      ShortCutKey=F9;
+                      CaptionML=[ENU=&Toggle Match;
+                                 ESP=Casar l¡neas seleccionadas];
+                      ToolTipML=[ENU=Set Matched Quantity equal to Quantity - Total Matched Quantity if Matched Quantity is zero. When Matched Quantity is different from zero, Matched Quantity is set to zero.;
+                                 ESP=Establece la Cantidad casada igual a la Cantidad - Cantidad casada total si la Cantidad casada es cero. Cuando Cantidad casada es diferente de cero, Cantidad casada se establece a cero.];
+                      OnAction=BEGIN
+                                 UpdateMatchedQuantity(TRUE);
+                               END;
+                                }
+      { 6085573 ;2   ;Action    ;
+                      Name=ItemTrackingEntries;
+                      ShortCutKey=Shift+Ctrl+I;
+                      CaptionML=[ENU=Item &Tracking Entries;
+                                 ESP=Movs. &seguim. prod.];
+                      ToolTipML=[ENU=View serial or lot numbers that are assigned to items.;
+                                 ESP=Permite ver los n£meros de serie o de lote que se asignan a los productos.];
+                      Image=ItemTrackingLedger;
+                      OnAction=VAR
+                                 MatchTrackingMgt@6085573 : Codeunit 6085830;
+                                 NewMatchedQty@6085574 : Decimal;
+                               BEGIN
+                                 MatchTrackingMgt.ShowItemTrackingForRcptLine(Rec,Document."No.",NewMatchedQty);
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1000000000;0;Container;
+                Name=ContentArea;
+                ContainerType=ContentArea }
+
+    { 161024016;1;Field   ;
+                Name=EventNotifier;
+                SourceExpr=EventNotifierSource;
+                ControlAddIn=[Akeyto.DocumentCapture.Dynamics.Nav.EventNotifier;PublicKeyToken=0c53e51c0afe7001] }
+
+    { 1000000001;1;Group  ;
+                Name=Group;
+                GroupType=Repeater }
+
+    { 1000000043;2;Field  ;
+                Name=Document No.;
+                Lookup=Yes;
+                ToolTipML=[ENU=Specifies the number of the purchase document.;
+                           ESP=Especifica el n£mero del documento de compra.];
+                SourceExpr="Document No.";
+                Visible=FALSE;
+                Editable=FALSE;
+                HideValue=DocNoHideValue;
+                Style=Strong;
+                StyleExpr=IsStrong;
+                OnLookup=BEGIN
+                           ShowDocument;
+                         END;
+                          }
+
+    { 1000000003;2;Field  ;
+                Name=Order No.;
+                Lookup=Yes;
+                ToolTipML=[ENU=Specifies the number of the purchase order that this invoice was posted from.;
+                           ESP=Especifica el n£mero del pedido de compra desde el cual fue registrada esta factura.];
+                SourceExpr="Order No.";
+                Editable=FALSE;
+                HideValue=DocNoHideValue;
+                Style=Strong;
+                StyleExpr=IsStrong;
+                OnLookup=VAR
+                           PurchHeader@1160040000 : Record 38;
+                         BEGIN
+                           IF PurchHeader.GET(PurchHeader."Document Type"::Order,"Order No.") THEN;
+                           PurchHeader.SETRANGE("Document Type",PurchHeader."Document Type"::Order);
+                           IF PAGE.RUNMODAL(0,PurchHeader) = ACTION::LookupOK THEN BEGIN
+                             Text := PurchHeader."No.";
+                             EXIT(TRUE);
+                           END;
+                         END;
+                          }
+
+    { 1000000042;2;Field  ;
+                Name=Buy-from Vendor No.;
+                ToolTipML=[ENU=Specifies the number of the vendor who delivers the products.;
+                           ESP=Especifica el n£mero del proveedor que envi¢ los productos.];
+                SourceExpr="Buy-from Vendor No.";
+                Visible=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000041;2;Field  ;
+                Name=Type;
+                ToolTipML=[ENU=Specifies the line type.;
+                           ESP=Especifica el tipo de l¡nea.];
+                SourceExpr=Type;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000040;2;Field  ;
+                Name=No.;
+                ToolTipML=[ENU=Specifies the number of a general ledger account, item, additional cost, or fixed asset, depending on what you selected in the Type field.;
+                           ESP=Especifica el n£mero de una cuenta contable, un producto, un coste adicional o un activo fijo, seg£n lo que se haya seleccionado en el campo Tipo.];
+                SourceExpr="No.";
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000039;2;Field  ;
+                Name=Variant Code;
+                ToolTipML=[ENU=Specifies the variant of the item on the line.;
+                           ESP=Especifica la variante del producto que figura en la l¡nea.];
+                SourceExpr="Variant Code";
+                Visible=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000038;2;Field  ;
+                Name=Description;
+                ToolTipML=[ENU=Specifies a description of the entry of the product to be purchased. To add a non-transactional text line, fill in the Description field only.;
+                           ESP=Especifica una descripci¢n del movimiento del producto que se va a comprar. Para agregar una l¡nea de texto no transaccional, rellene solo el campo Descripci¢n.];
+                SourceExpr=Description;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1160040002;2;Field  ;
+                Name=Description 2;
+                ToolTipML=[ENU=Specifies a second description of the entry of the product purchased.;
+                           ESP=Especifica una segunda descripci¢n del movimiento de producto comprado.];
+                SourceExpr="Description 2";
+                Visible=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000005;2;Field  ;
+                Name=Quantity;
+                ToolTipML=[ENU=Specifies the number of units of the item specified on the line.;
+                           ESP=Indica el n£mero de unidades del producto especificado en la l¡nea.];
+                BlankZero=Yes;
+                SourceExpr=Quantity;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000036;2;Field  ;
+                Name=Currency Code;
+                Lookup=No;
+                DrillDown=No;
+                ToolTipML=[ENU=Specifies the code of the currency of the amounts on the purchase lines.;
+                           ESP=Especifica el c¢digo de divisa de los importes de las l¡neas de compra.];
+                SourceExpr="Currency Code";
+                Visible=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000002;2;Field  ;
+                Name=Control1000000002;
+                CaptionML=[ENU=Direct Unit Cost (Order);
+                           ESP=Coste unit. directo (Pedido)];
+                ToolTipML=[ENU=Specifies the cost of one unit of the selected item or resource.;
+                           ESP=Especifica el coste unitario del producto o recurso seleccionado.];
+                BlankZero=Yes;
+                SourceExpr=PurchLine."Direct Unit Cost";
+                Editable=FALSE;
+                StyleExpr=StyleCodeCosts }
+
+    { 161024014;2;Field   ;
+                Name=Control161024014;
+                CaptionML=[ENU=Line Discount % (Order);
+                           ESP=% Descuento l¡nea (Pedido)];
+                ToolTipML=[ENU=Specifies the discount percentage that is granted for the item on the line.;
+                           ESP=Especifica el porcentaje de descuento aplicable al producto de la l¡nea.];
+                BlankZero=Yes;
+                SourceExpr=PurchLine."Line Discount %";
+                Visible=FALSE;
+                Editable=FALSE;
+                StyleExpr=StyleCodeDiscPct }
+
+    { 1000000035;2;Field  ;
+                Name=Shortcut Dimension 1 Code;
+                ToolTipML=[ENU=Specifies the code for Shortcut Dimension 1, which is one of two global dimension codes that you set up in the General Ledger Setup window.;
+                           ESP=Especifica el c¢digo de dimensi¢n del acceso directo 1, que es uno de los dos c¢digos de dimensi¢n globales que se configuran en la ventana Configuraci¢n de contabilidad.];
+                SourceExpr="Shortcut Dimension 1 Code";
+                Visible=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000034;2;Field  ;
+                Name=Shortcut Dimension 2 Code;
+                ToolTipML=[ENU=Specifies the code for Shortcut Dimension 2, which is one of two global dimension codes that you set up in the General Ledger Setup window.;
+                           ESP=Especifica el c¢digo de dimensi¢n del acceso directo 2, que es uno de los dos c¢digos de dimensi¢n globales que se configuran en la ventana Configuraci¢n de contabilidad.];
+                SourceExpr="Shortcut Dimension 2 Code";
+                Visible=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000033;2;Field  ;
+                Name=Location Code;
+                ToolTipML=[ENU=Specifies a code for the location where you want the items to be placed when they are received.;
+                           ESP=Especifica el c¢digo de almac‚n donde quiere que se guarden los productos recibidos.];
+                SourceExpr="Location Code";
+                Visible=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000032;2;Field  ;
+                Name=Unit of Measure Code;
+                ToolTipML=[ENU=Specifies how each unit of the item or resource is measured, such as in pieces or hours. By default, the value in the Base Unit of Measure field on the item or resource card is inserted.;
+                           ESP=Especifica c¢mo se mide cada unidad del producto o el recurso, por ejemplo, en piezas u horas. De forma predeterminada, se inserta el valor en el campo Unidad de medida base de la ficha de producto o recurso.];
+                SourceExpr="Unit of Measure Code";
+                Visible=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000031;2;Field  ;
+                Name=Unit of Measure;
+                ToolTipML=[ENU=Specifies the unit of measure.;
+                           ESP=Especifica la unidad de medida.];
+                SourceExpr="Unit of Measure";
+                Visible=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000030;2;Field  ;
+                Name=Appl.-to Item Entry;
+                ToolTipML=[ENU=Specifies the number of the item ledger entry that the document or journal line is applied -to.;
+                           ESP=Especifica el n£mero del movimiento de producto en el que se liquida la l¡nea de documento o diario.];
+                BlankZero=Yes;
+                SourceExpr="Appl.-to Item Entry";
+                Visible=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000006;2;Field  ;
+                Name=MatchedQuantity;
+                CaptionML=[ENU=Matched Quantity;
+                           ESP=Cantidad casada];
+                ToolTipML=[ENU=Specifies the quantity matched with the incoming invoice to the purchase receipt line.;
+                           ESP=Especifica la cantidad de la l¡nea del albar n de compra casada con la factura recibida.];
+                DecimalPlaces=0:5;
+                BlankZero=Yes;
+                SourceExpr=MatchedQuantity;
+                Style=Strong;
+                StyleExpr=TRUE;
+                OnValidate=BEGIN
+                             UpdateMatchedQuantity(FALSE);
+                           END;
+                            }
+
+    { 161024012;2;Field   ;
+                Name=MatchedUnitCost;
+                CaptionML=[ENU=Direct Unit Cost (Invoice);
+                           ESP=Coste unit. directo (Factura)];
+                ToolTipML=[ENU=Specifies the unit cost matched and used when creating purchase invoice lines upon registration.;
+                           ESP=Especifica el coste unitario casado y el utilizado al crear l¡neas de factura de compra al registrarse.];
+                DecimalPlaces=2:5;
+                BlankZero=Yes;
+                SourceExpr=MatchedUnitCost;
+                StyleExpr=StyleCodeCosts;
+                OnValidate=BEGIN
+                             UpdateMatchedDirectUnitCost(FALSE);
+                           END;
+                            }
+
+    { 161024013;2;Field   ;
+                Name=MatchedLineDiscPct;
+                CaptionML=[ENU=Line Discount % (Invoice);
+                           ESP=% Descuento l¡nea (Factura)];
+                ToolTipML=[ENU=Specifies the line discount percentage matched and used when creating purchase invoice lines upon registration.;
+                           ESP=Especifica el porcentaje de descuento de l¡nea casado y el utilizado al crear l¡neas de factura de compra al registrarse.];
+                DecimalPlaces=0:5;
+                BlankZero=Yes;
+                SourceExpr=MatchedLineDiscPct;
+                Visible=FALSE;
+                StyleExpr=StyleCodeDiscPct;
+                OnValidate=BEGIN
+                             UpdateMatchedLineDiscPct(FALSE);
+                           END;
+                            }
+
+    { 1160040001;2;Field  ;
+                Name=MatchedLineAmount;
+                CaptionML=[ENU=Line Amount (Invoice);
+                           ESP=Importe l¡nea (Factura)];
+                ToolTipML=[ENU=Specifies the line amount matched and used when creating purchase invoice lines upon registration.;
+                           ESP=Especifica el importe de l¡nea casado y utilizado al crear l¡neas de factura de compra al registrarse.];
+                BlankZero=Yes;
+                SourceExpr=MatchedLineAmount;
+                AutoFormatType=1;
+                AutoFormatExpr="Currency Code";
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1160040000;2;Field  ;
+                Name=MatchedDifference;
+                CaptionML=[ENU=Difference;
+                           ESP=Diferencia];
+                ToolTipML=[ENU=Specifies the difference between the line amount and the amount on the purchase receipt line.;
+                           ESP=Especifica la diferencia entre el importe de la l¡nea y el importe en la l¡nea del albar n de compra.];
+                BlankZero=Yes;
+                SourceExpr=MatchedDifference;
+                Editable=FALSE;
+                StyleExpr=StyleCodeDifference }
+
+    { 161024015;2;Field   ;
+                Name=Control161024015;
+                CaptionML=[ENU=Total Matched Quantity;
+                           ESP=Cantidad casada total];
+                ToolTipML=[ENU=Specifies the quantity matched with all documents to the line.;
+                           ESP=Especifica la cantidad de la l¡nea casada con todos los documentos.];
+                DecimalPlaces=0:5;
+                BlankZero=Yes;
+                SourceExpr=PurchDocMgnt.CalculateMatchedQty(Document."No.",PurchDocType::Receipt,"Document No.","Line No.",FALSE);
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong;
+                OnDrillDown=BEGIN
+                              PurchDocMgnt.ShowMatchedSpec(PurchDocType::Receipt,"Document No.","Line No.");
+                            END;
+                             }
+
+    { 1000000028;2;Field  ;
+                Name=Job No.;
+                ToolTipML=[ENU=Specifies the number of the related job.;
+                           ESP=Especifica el n£mero del proyecto relacionado.];
+                SourceExpr="Job No.";
+                Visible=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000027;2;Field  ;
+                Name=Prod. Order No.;
+                ToolTipML=[ENU=Specifies the number of the related production order.;
+                           ESP=Especifica el n£mero de la orden de producci¢n relacionada.];
+                SourceExpr="Prod. Order No.";
+                Visible=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000022;2;Field  ;
+                Name=Expected Receipt Date;
+                ToolTipML=[ENU="Specifies the date you expect the items to be available in your warehouse. If you leave the field blank, it will be calculated as follows: Planned Receipt Date + Safety Lead Time + Inbound Warehouse Handling Time = Expected Receipt Date.";
+                           ESP="Permite especificar la fecha en que se espera que los productos est‚n disponibles en su almac‚n. Si deja el campo vac¡o, se calcular  de la siguiente manera: Fecha de recepci¢n planificada + Plazo de seguridad + Tiempo de manipulaci¢n en almac‚n de entrada = Fecha de recepci¢n esperada."];
+                SourceExpr="Expected Receipt Date";
+                Visible=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000009;2;Field  ;
+                Name=Qty. Rcd. Not Invoiced;
+                ToolTipML=[ENU=Specifies the quantity of the received item that has been posted as received but that has not yet been posted as invoiced.;
+                           ESP=Especifica la cantidad del producto recibido que se registr¢ como recibida, pero que a£n no se registr¢ como facturada.];
+                BlankZero=Yes;
+                SourceExpr="Qty. Rcd. Not Invoiced";
+                Visible=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 1000000004;2;Field  ;
+                Name=Quantity Invoiced;
+                ToolTipML=[ENU=Specifies how many units of the item on the line have been posted as invoiced.;
+                           ESP=Especifica cu ntas unidades del producto que figura en la l¡nea se han registrado como facturadas.];
+                BlankZero=Yes;
+                SourceExpr="Quantity Invoiced";
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+    { 6085574;2;Field     ;
+                Name=Line Amount (Order);
+                CaptionML=[ENU=Line Amount (Order);
+                           ESP=Importe l¡nea (Pedido)];
+                ToolTipML=[ENU=Shows line amount calculated with price information from the order /return order line and quantity from match.;
+                           ESP=Muestra el importe de la l¡nea calculado con la informaci¢n del precio de la l¡nea de pedido/devoluci¢n y la cantidad casada.];
+                BlankNumbers=BlankZero;
+                SourceExpr=LineAmountOrder;
+                Visible=false;
+                Editable=false;
+                Style=Strong;
+                StyleExpr=IsStrong }
+
+  }
+  CODE
+  {
+    VAR
+      TempPurchRcptLine@1000000011 : TEMPORARY Record 121;
+      PurchHeader@1160040002 : Record 38;
+      PurchLine@1160040001 : Record 39;
+      Currency@1160040000 : Record 4;
+      PurchDocMgnt@1000000009 : Codeunit 6085709;
+      Document@1000000000 : Record 6085590;
+      EventNotifierSource@161024015 : BigText;
+      Channel@161024014 : GUID;
+      MatchedQuantity@1000000001 : Decimal;
+      MatchedUnitCost@161024013 : Decimal;
+      MatchedLineDiscPct@161024012 : Decimal;
+      MatchedLineAmount@1160040003 : Decimal;
+      MatchedDifference@6085576 : Decimal;
+      DocNoHideValue@1000000002 : Boolean INDATASET;
+      IsStrong@1160040004 : Boolean INDATASET;
+      StyleCodeCosts@6085573 : Text[30];
+      StyleCodeDiscPct@6085574 : Text[30];
+      StyleCodeDifference@6085575 : Text[30];
+      PurchDocType@6085577 : 'Receipt,Return Shipment,Order,Return Order';
+      UnsupportedFilterMethodErr@1000 : TextConst 'ENU=Filter method %1 is not supported;ESP=M‚todo filtro %1 no est  permitido.';
+      CalculatedFilterEnabled@1001 : Boolean;
+      LineAmountOrder@6085578 : Decimal;
+      DefaultSorting@1002 : Text;
+
+    LOCAL PROCEDURE IsFirstDocLine@2() : Boolean;
+    VAR
+      PurchRcptLine@1000 : Record 121;
+    BEGIN
+      IF CalculatedFilterEnabled THEN
+        EXIT(TRUE);
+      IF GETVIEW <> DefaultSorting THEN
+        EXIT(TRUE);
+
+      TempPurchRcptLine.RESET();
+      TempPurchRcptLine.COPYFILTERS(Rec);
+      TempPurchRcptLine.SETRANGE("Document No.","Document No.");
+      IF NOT TempPurchRcptLine.FINDFIRST THEN BEGIN
+        PurchRcptLine.COPYFILTERS(Rec);
+        PurchRcptLine.SETRANGE("Document No.","Document No.");
+        PurchRcptLine.SETFILTER("Qty. Rcd. Not Invoiced",'<>0');
+        IF PurchRcptLine.FINDFIRST THEN BEGIN
+          TempPurchRcptLine := PurchRcptLine;
+          TempPurchRcptLine.INSERT();
+        END;
+      END;
+      IF "Line No." = TempPurchRcptLine."Line No." THEN
+        EXIT(TRUE);
+    END;
+
+    PROCEDURE UpdatePage@1000000002();
+    BEGIN
+      CurrPage.UPDATE(FALSE);
+    END;
+
+    PROCEDURE ShowDocument@1000000000();
+    VAR
+      PurchRcptHeader@1000000000 : Record 120;
+    BEGIN
+      PurchRcptHeader.GET("Document No.");
+      PAGE.RUN(PAGE::"Posted Purchase Receipt",PurchRcptHeader);
+    END;
+
+    PROCEDURE SetDocument@1000000006(VAR NewDocument@1000000000 : Record 6085590);
+    BEGIN
+      Document := NewDocument;
+    END;
+
+    PROCEDURE SetChannel@161024013(NewChannel@161024012 : GUID);
+    BEGIN
+      Channel := NewChannel;
+    END;
+
+    PROCEDURE UpdateMatchedQuantity@6085573(AutoCalcQtyCostsDiscount@6085573 : Boolean);
+    VAR
+      PurchRcptLine@6085574 : Record 121;
+      PurchHeader@6085575 : Record 38;
+      PurchLine@6085576 : Record 39;
+      CDCModuleLicense@6085577 : Codeunit 6086008;
+    BEGIN
+      CDCModuleLicense.IsMatchingActivated(TRUE);
+      CurrPage.SETSELECTIONFILTER(PurchRcptLine);
+      IF PurchRcptLine.FINDSET THEN
+        REPEAT
+          IF NOT PurchHeader.GET(PurchHeader."Document Type"::Order,PurchRcptLine."Order No.") THEN
+            CLEAR(PurchHeader);
+
+          IF PurchHeader."Currency Code" <> '' THEN
+            Currency.GET(PurchHeader."Currency Code");
+          Currency.InitRoundingPrecision;
+
+          IF NOT PurchLine.GET(PurchHeader."Document Type",PurchHeader."No.",PurchRcptLine."Order Line No.") THEN
+            CLEAR(PurchLine);
+
+          IF AutoCalcQtyCostsDiscount THEN
+            PurchDocMgnt.CalcMatchedValues(Currency,Document."No.",PurchDocType::Receipt,
+              PurchRcptLine."Document No.",PurchRcptLine."Line No.",
+              PurchLine."Direct Unit Cost",PurchLine."Line Discount %",MatchedQuantity,MatchedUnitCost,
+              MatchedLineDiscPct,MatchedLineAmount,MatchedDifference);
+
+          PurchDocMgnt.UpdateMatchedQuantity(Document,PurchLine,Currency,PurchDocType::Receipt,
+            PurchRcptLine."Document No.",PurchRcptLine."Line No.",PurchRcptLine.Quantity,
+            PurchRcptLine."Qty. Rcd. Not Invoiced",MatchedQuantity,AutoCalcQtyCostsDiscount);
+
+          LineAmountOrder := PurchDocMgnt.GetReceiptLineAmount(PurchRcptLine,MatchedQuantity,PurchHeader."Currency Code");
+        UNTIL PurchRcptLine.NEXT = 0;
+      UpdateEventNotifier;
+    END;
+
+    PROCEDURE UpdateMatchedDirectUnitCost@6085575(AutoCalcDirectUnitCost@6085573 : Boolean);
+    BEGIN
+      PurchDocMgnt.UpdateMatchedDirectUnitCost(Document,"Currency Code",PurchDocType::Receipt,"Document No.","Line No.",
+        PurchLine."Direct Unit Cost",MatchedUnitCost,AutoCalcDirectUnitCost);
+      UpdateEventNotifier;
+    END;
+
+    PROCEDURE UpdateMatchedLineDiscPct@6085577(AutoCalcLineDiscPct@6085573 : Boolean);
+    BEGIN
+      PurchDocMgnt.UpdateMatchedLineDiscPct(Document,PurchDocType::Receipt,"Document No.","Line No.",
+        PurchLine."Line Discount %",MatchedLineDiscPct,AutoCalcLineDiscPct);
+      UpdateEventNotifier;
+    END;
+
+    PROCEDURE UpdateEventNotifier@6085576();
+    BEGIN
+      CLEAR(EventNotifierSource);
+      EventNotifierSource.ADDTEXT(FORMAT(TIME) + 'RAISEMESSAGE' + FORMAT(Channel));
+      CurrPage.UPDATE;
+    END;
+
+    PROCEDURE SetOrderNo@6085593(OrderNo@1160040000 : Code[250]);
+    VAR
+      OrderNo2@6085578 : Code[250];
+      OrderNoHasIllegalFilterChars@6085577 : Boolean;
+      CaptureMgt@6085576 : Codeunit 6085576;
+      InvalidOrderNoFilter@6085575 : Boolean;
+      CDCPurchDocMgt@6085574 : Codeunit 6085709;
+      DocNoFilter@6085573 : Code[250];
+    BEGIN
+      OrderNo2 := COPYSTR(OrderNo,1,MAXSTRLEN(OrderNo));
+      OrderNoHasIllegalFilterChars := CaptureMgt.HasIllegalFilterCharacters(OrderNo2);
+
+      InvalidOrderNoFilter := CDCPurchDocMgt.CheckOurOrderNoFilter(OrderNo);
+      IF InvalidOrderNoFilter THEN
+        DocNoFilter := OrderNo2
+      ELSE
+        DocNoFilter := CONVERTSTR(OrderNo,',','|');
+
+      IF OrderNo <> '' THEN BEGIN
+        IF NOT OrderNoHasIllegalFilterChars THEN
+          SETFILTER("Order No.",DocNoFilter)
+        ELSE
+          IF STRLEN(DocNoFilter) <= MAXSTRLEN("Document No.") THEN
+            SETRANGE("Order No.",DocNoFilter);
+      END ELSE
+        SETRANGE("Order No.");
+      CurrPage.UPDATE(FALSE);
+    END;
+
+    PROCEDURE SetCalculatedFilter@1(EnableFilter@1000 : Boolean;FilterMethod@1001 : Code[20]);
+    BEGIN
+      CalculatedFilterEnabled := EnableFilter;
+      IF NOT EnableFilter THEN BEGIN
+        CLEARMARKS;
+        MARKEDONLY(FALSE);
+        EXIT;
+      END;
+      CASE FilterMethod OF
+        'UNMATCHED':
+          BEGIN
+            IF FINDSET THEN REPEAT
+              IF PurchDocMgnt.CalculateMatchedQty(Document."No.",PurchDocType::Receipt,"Document No.","Line No.",FALSE) = 0 THEN
+                MARK(TRUE);
+            UNTIL NEXT = 0;
+          END;
+        'AMOUNTDIFF':
+          BEGIN
+            IF FINDSET THEN REPEAT
+              IF NOT PurchHeader.GET(PurchHeader."Document Type"::Order,"Order No.") THEN
+                CLEAR(PurchHeader);
+              IF PurchHeader."Currency Code" <> '' THEN
+                Currency.GET(PurchHeader."Currency Code");
+              Currency.InitRoundingPrecision;
+              IF PurchLine.GET(PurchHeader."Document Type",PurchHeader."No.","Order Line No.") THEN BEGIN
+                PurchDocMgnt.CalcMatchedValues(Currency,Document."No.",PurchDocType::Receipt,"Document No.",
+                  "Line No.",PurchLine."Direct Unit Cost",PurchLine."Line Discount %",MatchedQuantity,
+                  MatchedUnitCost,MatchedLineDiscPct,MatchedLineAmount,MatchedDifference);
+                IF MatchedDifference <> 0 THEN
+                  MARK(TRUE);
+              END;
+            UNTIL NEXT = 0;
+          END;
+        ELSE
+          ERROR(UnsupportedFilterMethodErr,FilterMethod);
+      END;
+      MARKEDONLY(TRUE);
+    END;
+
+    LOCAL PROCEDURE ShowTracking@6085574();
+    VAR
+      ItemLedgEntry@1000 : Record 32;
+      TempItemLedgEntry@1002 : TEMPORARY Record 32;
+      TrackingForm@1001 : Page 99000822;
+    BEGIN
+      TESTFIELD(Type,Type::Item);
+      IF "Item Rcpt. Entry No." <> 0 THEN BEGIN
+        ItemLedgEntry.GET("Item Rcpt. Entry No.");
+        TrackingForm.SetItemLedgEntry(ItemLedgEntry);
+      END ELSE
+        TrackingForm.SetMultipleItemLedgEntries(TempItemLedgEntry,
+          DATABASE::"Purch. Rcpt. Line",0,"Document No.",'',0,"Line No.");
+
+      TrackingForm.RUNMODAL;
+    END;
+
+    PROCEDURE SetFilters@1100288000(Document@1100288003 : Record 6085590);
+    VAR
+      RecRef@1100288000 : RecordRef;
+      FieldRef@1100288001 : FieldRef;
+      RecIDMgt@1100288002 : Codeunit 6085604;
+      MatchFilters@1100288004 : Record 60100;
+      CaptureMgt@1100288005 : Codeunit 6085576;
+      FilterStr@1100288006 : Text;
+      Field@1100288007 : Record 6085580;
+      RecHasFilters@1100288008 : Boolean;
+    BEGIN
+      RecHasFilters := HASFILTER;
+
+      RecRef.GETTABLE(Rec);
+      MatchFilters.SETRANGE("Template No.",Document."Template No.");
+      MatchFilters.SETRANGE("Table No.",DATABASE::"Purch. Rcpt. Line");
+      IF NOT MatchFilters.FINDSET THEN
+        EXIT;
+
+      REPEAT
+        IF RecHasFilters THEN BEGIN
+          RecRef.RESET;
+          MESSAGE('pasa');
+        END
+        ELSE BEGIN
+          FilterStr := CaptureMgt.GetText(Document,Field.Type::Header,MatchFilters."Filter Field",0);
+          RecIDMgt.FilterRecRef(RecRef,MatchFilters."Field No.",FilterStr);
+        END;
+      UNTIL MatchFilters.NEXT = 0;
+
+      RecRef.SETTABLE(Rec);
+      CurrPage.UPDATE(FALSE);
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
